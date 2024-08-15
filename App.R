@@ -25,7 +25,7 @@ ui <- fluidPage(
                                div(class = "jumbotron",
                                    h1("Welcome to Shiny Insights"),
                                    p("The application is designed to load tabular data and support various functionalities such as data visualization, feature selection, and machine learning classification. The project was completed as part of the 'Software Technology' course requirements."),
-                                   actionButton("clickMe", "Click Me")
+                                  )
                                )
                         )
                       )
