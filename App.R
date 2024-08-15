@@ -96,7 +96,8 @@ ui <- fluidPage(
                                      verbatimTextOutput("classSummary"),
                                      plotOutput("rocPlot"),
                                      plotOutput("accuracyPlot"),
-                                     plotOutput("confusionMatrixPlot")
+                                     plotOutput("confusionMatrixPlot"),
+                                     tableOutput("comparisonTable")  # Add a table to display comparison results
                                    )
                                  )
                         )
@@ -107,12 +108,19 @@ ui <- fluidPage(
                         sidebarPanel(
                           "Information about this project"
                         ), 
-                        mainPanel(htmlOutput("text1"))
+                        mainPanel(
+                          HTML("<h3>This application was developed by Angeliki Rizou as part of the 'Software Technology' course requirements.</h3>
+                   <p>It provides functionalities for data visualization, feature selection, and machine learning classification. The goal is to offer an intuitive interface for users to interact with their data and apply various analytical techniques.</p>")
+                        )
                       )
              )
+             
   )
 )
 server <- function(input, output, session) {
+  
+  # Store performance metrics
+  performanceMetrics <- reactiveValues(knn = NULL, dt = NULL)
   
   # Data upload and table display
   observe({
@@ -245,6 +253,8 @@ server <- function(input, output, session) {
     # Confusion matrix
     confusion <- confusionMatrix(knnPred, testData[[input$classTarget]])
     
+    performanceMetrics$knn <- confusion$overall
+    
     output$classSummary <- renderPrint({
       confusion
     })
@@ -313,6 +323,8 @@ server <- function(input, output, session) {
     # Confusion matrix
     confusion <- confusionMatrix(dtPred, testData[[input$classTarget]])
     
+    performanceMetrics$dt <- confusion$overall
+    
     output$classSummary <- renderPrint({
       confusion
     })
@@ -347,6 +359,22 @@ server <- function(input, output, session) {
         ggtitle("Confusion Matrix") +
         theme_minimal()
     })
+  })
+  
+  # Comparison Table
+  output$comparisonTable <- renderTable({
+    req(performanceMetrics$knn, performanceMetrics$dt)
+    
+    knn_metrics <- performanceMetrics$knn
+    dt_metrics <- performanceMetrics$dt
+    
+    comparison_df <- data.frame(
+      Metric = c("Accuracy", "Kappa", "Sensitivity", "Specificity"),
+      KNN = c(knn_metrics["Accuracy"], knn_metrics["Kappa"], knn_metrics["Sensitivity"], knn_metrics["Specificity"]),
+      Decision_Trees = c(dt_metrics["Accuracy"], dt_metrics["Kappa"], dt_metrics["Sensitivity"], dt_metrics["Specificity"])
+    )
+    
+    comparison_df
   })
 }
 
