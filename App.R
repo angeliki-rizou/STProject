@@ -88,11 +88,15 @@ ui <- fluidPage(
                                      selectInput("classMethod", "Choose Classification Algorithm", choices = c("K-Nearest Neighbors", "Support Vector Machine")),
                                      numericInput("knnK", "K for KNN (if KNN selected)", value = 5),
                                      selectInput("classFeatures", "Features to Use", choices = "", selected = "", multiple = TRUE),
-                                     selectInput("classTarget", "Target Variable", choices = "", selected = "")
+                                     selectInput("classTarget", "Target Variable", choices = "", selected = ""),
+                                     actionButton("runKNN", "Run KNN Algorithm")  # Add a button to run KNN
                                    ),
                                    mainPanel(
                                      verbatimTextOutput("classSummary"),
-                                     plotOutput("rocPlot")
+                                     plotOutput("rocPlot"),
+                                     plotOutput("knnAccuracyPlot"),
+                                     plotOutput("confusionMatrixPlot"),
+                                     plotOutput("rocPlot")  # Already existing
                                    )
                                  )
                         )
@@ -177,90 +181,110 @@ server <- function(input, output, session) {
   # Feature Selection
   observeEvent(input$featSelMethod, {
     req(input$file1)
-    df <- read.csv(input$file1$datapath, header = input$header, sep = input$sep)
-    df <- df[ , sapply(df, is.numeric)]
     
-    if(input$featSelMethod == "VarianceThreshold") {
+    # Read the data
+    file_ext <- tools::file_ext(input$file1$name)
+    
+    if (file_ext == "csv") {
+      df <- read.csv(input$file1$datapath, header = input$header, sep = input$sep)
+    } else if (file_ext == "xlsx") {
+      df <- readxl::read_excel(input$file1$datapath)
+    }
+    
+    df <- df[ , sapply(df, is.numeric)]  # Use only numeric data for feature selection
+    
+    # Ensure target variable is selected for RFE
+    if (input$featSelMethod == "Recursive Feature Elimination") {
+      req(input$classTarget)
+      y <- df[[input$classTarget]]  # Define the target variable
+      x <- df[ , setdiff(names(df), input$classTarget)]  # Exclude the target from predictors
+      
+      # RFE process
+      control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+      rfeResult <- rfe(x = x, y = y, sizes = c(1:input$numFeatures), rfeControl = control)
+      selectedFeatures <- predictors(rfeResult)
+      
+    } else if (input$featSelMethod == "VarianceThreshold") {
       varThreshold <- caret::nearZeroVar(df, saveMetrics = TRUE)
       selectedFeatures <- names(varThreshold[varThreshold$nzv == FALSE,])
-    } else if(input$featSelMethod == "Recursive Feature Elimination") {
-      control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
-      rfeResult <- rfe(df, input$numFeatures, sizes = c(1:input$numFeatures), rfeControl = control)
-      selectedFeatures <- predictors(rfeResult)
     }
     
     reducedData <- df[, selectedFeatures]
     output$reducedData <- renderDT({ reducedData })
-  })
-  
-  # Classification
-  # Render UI for variable selection
-  output$var_select <- renderUI({
-    df <- data()
-    numeric_vars <- names(df)[sapply(df, is.numeric)]
-    selectInput("vars", "Select Numeric Variables", choices = numeric_vars, selected = numeric_vars, multiple = TRUE)
-  })
-  
-  # Render UI for model-specific parameters
-  output$model_params <- renderUI({
-    if (input$model == "k-NN") {
-      numericInput("k", "Number of Neighbors (k)", value = 3, min = 1)
-    } else if (input$model == "SVM") {
-      numericInput("svmCost", "Cost Parameter", value = 1, min = 0.01, step = 0.01)
-    }
-  })
-  
-  # Train model based on user input
-  observeEvent(input$trainButton, {
-    df <- data()
-    selected_vars <- input$vars
     
-    if (length(selected_vars) < 2) {
-      showNotification("Please select at least two numeric variables.", type = "error")
-      return()
+    # Update the classification feature selection input
+    updateSelectInput(session, "classFeatures", choices = selectedFeatures)
+  })
+  
+  
+  # Classification for KNN
+  observeEvent(input$runKNN, {
+    req(input$file1, input$classFeatures, input$classTarget)
+    
+    # Read the data
+    file_ext <- tools::file_ext(input$file1$name)
+    
+    if (file_ext == "csv") {
+      df <- read.csv(input$file1$datapath, header = input$header, sep = input$sep)
+    } else if (file_ext == "xlsx") {
+      df <- readxl::read_excel(input$file1$datapath)
     }
     
-    df_subset <- df[, selected_vars, drop = FALSE]
-    df$label <- as.factor(df$label)  # Ensure response variable is a factor
+    # Prepare data for classification
+    df <- df[ , c(input$classFeatures, input$classTarget)]
+    df[[input$classTarget]] <- as.factor(df[[input$classTarget]])
     
-    # Split data
     set.seed(123)  # For reproducibility
-    train_index <- sample(seq_len(nrow(df)), size = 0.8 * nrow(df))
-    train_data <- df[train_index, ]
-    test_data <- df[-train_index, ]
+    trainIndex <- createDataPartition(df[[input$classTarget]], p = 0.8, list = FALSE)
+    trainData <- df[trainIndex, ]
+    testData <- df[-trainIndex, ]
     
-    # Process the data
-    train_data_scaled <- scale(train_data[, selected_vars, drop = FALSE])
-    test_data_scaled <- scale(test_data[, selected_vars, drop = FALSE])
+    # Train the KNN model
+    knnModel <- train(as.formula(paste(input$classTarget, "~ .")), data = trainData, method = "knn", tuneGrid = data.frame(k = input$knnK))
     
-    if (input$model == "k-NN") {
-      # Fit k-NN model
-      knn_pred <- knn(train = train_data_scaled, 
-                      test = test_data_scaled, 
-                      cl = train_data$label, 
-                      k = input$k)
-      
-      # Output results
-      output$modelResult <- renderPrint({
-        confusionMatrix <- table(test_data$label, knn_pred)
-        confusionMatrix
-      })
-      
-    } else if (input$model == "SVM") {
-      # Fit SVM model
-      svm_model <- svm(label ~ ., data = train_data, cost = input$svmCost)
-      
-      # Predict
-      svm_pred <- predict(svm_model, newdata = test_data_scaled)
-      
-      # Output results
-      output$modelResult <- renderPrint({
-        confusionMatrix <- table(test_data$label, svm_pred)
-        confusionMatrix
-      })
-    }
+    # Predict on test data
+    knnPred <- predict(knnModel, newdata = testData)
+    
+    # Confusion matrix
+    confusion <- confusionMatrix(knnPred, testData[[input$classTarget]])
+    
+    output$classSummary <- renderPrint({
+      confusion
+    })
+    
+    # ROC plot (for binary classification)
+    output$rocPlot <- renderPlot({
+      if (length(levels(testData[[input$classTarget]])) == 2) {
+        roc_curve <- roc(testData[[input$classTarget]], as.numeric(knnPred))
+        plot(roc_curve)
+      } else {
+        print("ROC plot is only available for binary classification.")
+      }
+    })
+    
+    # Plot: Accuracy vs. K values
+    output$knnAccuracyPlot <- renderPlot({
+      accuracy_results <- knnModel$results
+      ggplot(accuracy_results, aes(x = k, y = Accuracy)) +
+        geom_line() +
+        geom_point() +
+        ggtitle("Accuracy vs. K values") +
+        xlab("K values") +
+        ylab("Accuracy")
+    })
+    
+    # Plot: Multiclass Confusion Matrix
+    output$confusionMatrixPlot <- renderPlot({
+      confusion_df <- as.data.frame(confusion$table)
+      ggplot(confusion_df, aes(x = Reference, y = Prediction, fill = Freq)) +
+        geom_tile() +
+        geom_text(aes(label = Freq), color = "white") +
+        scale_fill_gradient(low = "lightblue", high = "blue") +
+        ggtitle("Confusion Matrix") +
+        theme_minimal()
+    })
   })
 }
+
 # Run the application 
 shinyApp(ui = ui, server = server)
-
