@@ -25,7 +25,7 @@ ui <- fluidPage(
                                div(class = "jumbotron",
                                    h1("Welcome to Shiny Insights"),
                                    p("The application is designed to load tabular data and support various functionalities such as data visualization, feature selection, and machine learning classification. The project was completed as part of the 'Software Technology' course requirements."),
-                                  
+                                   
                                )
                         )
                       )
@@ -85,18 +85,18 @@ ui <- fluidPage(
                         tabPanel("Classification",
                                  sidebarLayout(
                                    sidebarPanel(
-                                     selectInput("classMethod", "Choose Classification Algorithm", choices = c("K-Nearest Neighbors", "Support Vector Machine")),
+                                     selectInput("classMethod", "Choose Classification Algorithm", choices = c("K-Nearest Neighbors", "Decision Trees")),
                                      numericInput("knnK", "K for KNN (if KNN selected)", value = 5),
                                      selectInput("classFeatures", "Features to Use", choices = "", selected = "", multiple = TRUE),
                                      selectInput("classTarget", "Target Variable", choices = "", selected = ""),
-                                     actionButton("runKNN", "Run KNN Algorithm")  # Add a button to run KNN
+                                     actionButton("runKNN", "Run KNN Algorithm"),
+                                     actionButton("runDT", "Run Decision Trees Algorithm")  # Add a button to run Decision Trees
                                    ),
                                    mainPanel(
                                      verbatimTextOutput("classSummary"),
                                      plotOutput("rocPlot"),
-                                     plotOutput("knnAccuracyPlot"),
-                                     plotOutput("confusionMatrixPlot"),
-                                     plotOutput("rocPlot")  # Already existing
+                                     plotOutput("accuracyPlot"),
+                                     plotOutput("confusionMatrixPlot")
                                    )
                                  )
                         )
@@ -112,8 +112,6 @@ ui <- fluidPage(
              )
   )
 )
-
-# Server
 server <- function(input, output, session) {
   
   # Data upload and table display
@@ -216,7 +214,6 @@ server <- function(input, output, session) {
     updateSelectInput(session, "classFeatures", choices = selectedFeatures)
   })
   
-  
   # Classification for KNN
   observeEvent(input$runKNN, {
     req(input$file1, input$classFeatures, input$classTarget)
@@ -263,13 +260,80 @@ server <- function(input, output, session) {
     })
     
     # Plot: Accuracy vs. K values
-    output$knnAccuracyPlot <- renderPlot({
+    output$accuracyPlot <- renderPlot({
       accuracy_results <- knnModel$results
       ggplot(accuracy_results, aes(x = k, y = Accuracy)) +
         geom_line() +
         geom_point() +
         ggtitle("Accuracy vs. K values") +
         xlab("K values") +
+        ylab("Accuracy")
+    })
+    
+    # Plot: Multiclass Confusion Matrix
+    output$confusionMatrixPlot <- renderPlot({
+      confusion_df <- as.data.frame(confusion$table)
+      ggplot(confusion_df, aes(x = Reference, y = Prediction, fill = Freq)) +
+        geom_tile() +
+        geom_text(aes(label = Freq), color = "white") +
+        scale_fill_gradient(low = "lightblue", high = "blue") +
+        ggtitle("Confusion Matrix") +
+        theme_minimal()
+    })
+  })
+  
+  # Classification for Decision Trees
+  observeEvent(input$runDT, {
+    req(input$file1, input$classFeatures, input$classTarget)
+    
+    # Read the data
+    file_ext <- tools::file_ext(input$file1$name)
+    
+    if (file_ext == "csv") {
+      df <- read.csv(input$file1$datapath, header = input$header, sep = input$sep)
+    } else if (file_ext == "xlsx") {
+      df <- readxl::read_excel(input$file1$datapath)
+    }
+    
+    # Prepare data for classification
+    df <- df[ , c(input$classFeatures, input$classTarget)]
+    df[[input$classTarget]] <- as.factor(df[[input$classTarget]])
+    
+    set.seed(123)  # For reproducibility
+    trainIndex <- createDataPartition(df[[input$classTarget]], p = 0.8, list = FALSE)
+    trainData <- df[trainIndex, ]
+    testData <- df[-trainIndex, ]
+    
+    # Train the Decision Tree model
+    dtModel <- train(as.formula(paste(input$classTarget, "~ .")), data = trainData, method = "rpart")
+    
+    # Predict on test data
+    dtPred <- predict(dtModel, newdata = testData)
+    
+    # Confusion matrix
+    confusion <- confusionMatrix(dtPred, testData[[input$classTarget]])
+    
+    output$classSummary <- renderPrint({
+      confusion
+    })
+    
+    # ROC plot (for binary classification)
+    output$rocPlot <- renderPlot({
+      if (length(levels(testData[[input$classTarget]])) == 2) {
+        roc_curve <- roc(testData[[input$classTarget]], as.numeric(dtPred))
+        plot(roc_curve)
+      } else {
+        print("ROC plot is only available for binary classification.")
+      }
+    })
+    
+    # Plot: Decision Tree Model
+    output$accuracyPlot <- renderPlot({
+      accuracy_results <- dtModel$results
+      ggplot(accuracy_results, aes(x = 1, y = Accuracy)) +
+        geom_bar(stat = "identity") +
+        ggtitle("Decision Tree Accuracy") +
+        xlab("Decision Tree") +
         ylab("Accuracy")
     })
     
