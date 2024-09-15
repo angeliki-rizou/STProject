@@ -106,14 +106,43 @@ ui <- fluidPage(
              tabPanel("Info", 
                       sidebarLayout(
                         sidebarPanel(
-                          "Information about this project"
+                          h4("Project Information"),
+                          tags$hr(),
+                          p("This project was developed as part of the 'Software Technology' course. Explore the different functionalities and data analysis tools available."),
+                          tags$br(),
+                          h4("Additional Resources"),
+                          
+                          tags$br(),
+                          tags$br(),
+                          tags$a(href = "https://jmbuhr.de/dataintro/", 
+                                 class = "btn btn-primary", 
+                                 target = "_blank", 
+                                 "Introduction to Data Analysis with R"),
+                          tags$br(),
+                          tags$br(),
+                          img(src = "https://cdn-icons-png.freepik.com/256/9422/9422795.png", height = '256', width = '256', alt = "Data Analysis Image"),
+                          tags$br(),
+                          tags$hr(),
+                          p("For more details on Shiny framework:", 
+                            a("Click here", href = "https://shiny.rstudio.com/"))
                         ), 
                         mainPanel(
-                          HTML("<h3>This application was developed by Angeliki Rizou as part of the 'Software Technology' course requirements.</h3>
-                   <p>It provides functionalities for data visualization, feature selection, and machine learning classification. The goal is to offer an intuitive interface for users to interact with their data and apply various analytical techniques.</p>")
+                          HTML("<h3>About the Application</h3>
+           <p>The 'Shiny Insights' application was developed as part of the requirements for the 'Software Technology' course. Its primary goal is to provide users with a flexible and user-friendly interface for data analysis. The main functionalities of the application include data uploading and visualization, dimensionality reduction (PCA and UMAP), exploratory data analysis (EDA), feature selection, and machine learning classification algorithms (K-Nearest Neighbors and Decision Trees).</p>
+           <h3>Development Team</h3>
+           <p>The application was developed by Angeliki Rizou as part of her coursework. Her role involved analyzing requirements, designing the user interface, developing the data visualization and analysis features, and integrating machine learning algorithms into the application.</p>
+           <h3>Specific Tasks</h3>
+           <ul>
+             <li><strong>User Interface (UI):</strong> Designed the UI using Shiny and applied the 'cerulean' theme for a modern look.</li>
+             <li><strong>Data Upload:</strong> Implemented the feature to upload data from CSV and Excel files and display them using the DT package.</li>
+             <li><strong>Data Visualization:</strong> Developed data visualization functionalities like PCA, UMAP, histograms, and box plots for exploratory analysis.</li>
+             <li><strong>Feature Selection:</strong> Integrated feature selection methods such as Variance Threshold and Recursive Feature Elimination (RFE).</li>
+             <li><strong>Machine Learning:</strong> Implemented classification algorithms like K-Nearest Neighbors (KNN) and Decision Trees, along with performance evaluation tools like ROC curves and confusion matrices.</li>
+           </ul>")
                         )
                       )
              )
+             
              
   )
 )
